@@ -489,6 +489,10 @@ class App(_BaseApp):
         self.destroy()
 
 
-if __name__ == "__main__":
+def main():
     app = App()
     app.mainloop()
+
+
+if __name__ == "__main__":
+    main()
