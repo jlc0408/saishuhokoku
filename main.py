@@ -67,7 +67,7 @@ class App(_BaseApp):
     def _build_main_tab(self, parent: ttk.Frame):
         pad = {"padx": 12, "pady": 6}
 
-        # ─ ② 日付設定 ─
+        # ─ ① 日付設定 ─
         date_frame = ttk.LabelFrame(parent, text="① 取得する日付")
         date_frame.pack(fill="x", **pad)
 
@@ -87,10 +87,15 @@ class App(_BaseApp):
         )
         self._btn_yesterday.pack(side="left", padx=4, pady=6)
 
-        # 日付入力欄（ボタン選択で自動入力、手動編集も可）
-        self._date_entry = ttk.Entry(date_frame, width=12)
-        self._date_entry.pack(side="left", padx=8)
-        ttk.Label(date_frame, text="(YYYY/MM/DD)").pack(side="left")
+        ttk.Label(date_frame, text="開始:").pack(side="left", padx=(12, 2))
+        self._date_from_entry = ttk.Entry(date_frame, width=12)
+        self._date_from_entry.pack(side="left")
+
+        ttk.Label(date_frame, text="終了:").pack(side="left", padx=(8, 2))
+        self._date_to_entry = ttk.Entry(date_frame, width=12)
+        self._date_to_entry.pack(side="left")
+
+        ttk.Label(date_frame, text="(YYYY/MM/DD)").pack(side="left", padx=(4, 0))
 
         self._update_date_label()
 
@@ -180,20 +185,23 @@ class App(_BaseApp):
         self.after(150, lambda: btn.configure(relief="raised", bg="#e0e0e0", fg="black"))
 
     def _update_date_label(self):
-        """入力欄へ日付を自動セットする。"""
+        """本日・昨日ボタン押下時に開始日・終了日を同じ値でセットする。"""
         mode = self._date_var.get()
         today = datetime.date.today()
         d = today if mode == "today" else today - datetime.timedelta(days=1)
-        self._date_entry.delete(0, "end")
-        self._date_entry.insert(0, d.strftime("%Y/%m/%d"))
+        ds = d.strftime("%Y/%m/%d")
+        for entry in (self._date_from_entry, self._date_to_entry):
+            entry.delete(0, "end")
+            entry.insert(0, ds)
 
-    def _get_selected_date(self) -> datetime.date | None:
-        """入力欄の値をパースして返す。"""
-        raw = self._date_entry.get().strip()
+    def _get_date_range(self) -> tuple[datetime.date, datetime.date] | tuple[None, None]:
+        """開始日・終了日をパースして返す。不正な場合は (None, None)。"""
         try:
-            return datetime.datetime.strptime(raw, "%Y/%m/%d").date()
+            d_from = datetime.datetime.strptime(self._date_from_entry.get().strip(), "%Y/%m/%d").date()
+            d_to   = datetime.datetime.strptime(self._date_to_entry.get().strip(), "%Y/%m/%d").date()
+            return d_from, d_to
         except ValueError:
-            return None
+            return None, None
 
     # ─────────────────────────────────────────
     # ファイル選択
@@ -233,9 +241,12 @@ class App(_BaseApp):
             )
             return
 
-        date = self._get_selected_date()
-        if not date:
+        date_from, date_to = self._get_date_range()
+        if not date_from or not date_to:
             messagebox.showerror("エラー", "日付を正しく設定してください（例: 2026/06/02）")
+            return
+        if date_from > date_to:
+            messagebox.showerror("エラー", "開始日は終了日以前の日付を設定してください。")
             return
         if not self._excel_path:
             messagebox.showerror("エラー", "Excelファイルを選択してください。")
@@ -246,17 +257,16 @@ class App(_BaseApp):
         self._btn_stop.configure(state="normal")
         self._set_status("Edge起動中…", "orange")
         self._log("═" * 50)
-        self._log(f"処理開始 | 日付: {date.strftime('%Y/%m/%d')} | ファイル: {os.path.basename(self._excel_path)}")
+        self._log(f"処理開始 | {date_from.strftime('%Y/%m/%d')} ～ {date_to.strftime('%Y/%m/%d')} | ファイル: {os.path.basename(self._excel_path)}")
 
-        # Edge起動 → BEAMS操作 をすべて同一スレッドで行う
-        threading.Thread(target=self._run_all, args=(date,), daemon=True).start()
+        threading.Thread(target=self._run_all, args=(date_from, date_to), daemon=True).start()
 
     def _stop(self):
         self._running = False
         self._log("⚠ ユーザーにより停止要求")
         self._btn_stop.configure(state="disabled")
 
-    def _run_all(self, date: datetime.date):
+    def _run_all(self, date_from: datetime.date, date_to: datetime.date):
         """Edge起動 → ログイン → 処理 をすべてこのスレッド内で実行する。"""
         from browser_manager import BrowserManager, BrowserError
         from beams_scraper import BeamsScraper
@@ -305,7 +315,7 @@ class App(_BaseApp):
                 return
 
             # ⑦⑧ 検索
-            count = scraper.search_by_date(date)
+            count = scraper.search_by_date(date_from, date_to)
             if not self._running:
                 return
 
@@ -319,7 +329,7 @@ class App(_BaseApp):
                 self._log("処理対象の案件が見つかりませんでした。")
                 return
 
-            et_date_str = self._date_to_et(date)
+            et_date_str = self._date_to_et(date_from)  # ET日は開始日を使用
             success = 0
             fail = 0
 
@@ -360,7 +370,7 @@ class App(_BaseApp):
 
             # 申込検索Bタブに戻って検索条件をリセット（再移動）
             scraper.go_to_search_tab()
-            usen_count = scraper.search_usen(date)
+            usen_count = scraper.search_usen(date_from, date_to)
 
             if usen_count > 50:
                 self._log(f"⚠ 【USEN】検索結果が{usen_count}件あります（51件以上）。全件を処理します。")
