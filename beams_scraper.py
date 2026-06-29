@@ -53,7 +53,7 @@ def _js_get_next_td_text(page, label_text: str) -> str:
     (() => {{
         const labels = document.querySelectorAll('td.labelCol');
         for (const td of labels) {{
-            if (td.innerText && td.innerText.includes('{label_text}')) {{
+            if (td.innerText && td.innerText.trim() === '{label_text}') {{
                 const next = td.nextElementSibling;
                 return next ? next.innerText.trim() : '';
             }}
@@ -522,22 +522,9 @@ class BeamsScraper:
                 time.sleep(0.5)
             else:
                 self._log("⚠ 【USEN】法人登録(編集)ボタンが見つかりませんでした。通常取得にフォールバック")
-
-                # デバッグ: 詳細ページの全ラベルをダンプ
-                try:
-                    labels = detail_page.evaluate("""
-                    (() => {
-                        const tds = document.querySelectorAll('td.labelCol');
-                        return Array.from(tds).map(td => td.innerText.trim()).filter(t => t).join(' | ');
-                    })()
-                    """) or ""
-                    self._log(f"  【USEN・FB】ラベル一覧: {labels}")
-                except Exception:
-                    pass
-
                 code = _js_get_next_td_text(detail_page, "NTTパートナーコード")
                 self._log(f"  【USEN・FB】NTTパートナーコード: {code}")
-                mitsugiten_raw = _js_get_next_td_text(detail_page, "三次店")
+                mitsugiten_raw = _js_get_next_td_text(detail_page, "代理店様用フリーボックス①")
                 data["mitsugiten"] = mitsugiten_raw.strip()
                 self._log(f"  【USEN・FB】三次店(raw): {mitsugiten_raw}")
 
