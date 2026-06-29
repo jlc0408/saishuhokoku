@@ -26,6 +26,23 @@ def _date_to_str(date_obj) -> str:
     return date_obj.strftime("%Y/%m/%d")
 
 
+def _parse_et_date(raw: str) -> str:
+    """
+    日付文字列から「M月D日」形式に変換する。年・時刻・0埋めなし。
+    例: '2026/05/15 13:29' → '5月15日'
+        '2026/06/01'       → '6月1日'
+    """
+    raw = raw.strip()
+    for fmt in ("%Y/%m/%d %H:%M", "%Y/%m/%d %H:%M:%S", "%Y/%m/%d"):
+        try:
+            import datetime as _dt
+            d = _dt.datetime.strptime(raw, fmt)
+            return f"{d.month}月{d.day}日"
+        except ValueError:
+            continue
+    return raw  # パース失敗時はそのまま返す
+
+
 def _js_get_next_td_text(page, label_text: str) -> str:
     """
     td.labelCol のテキストが label_text に一致する行の
@@ -328,6 +345,11 @@ class BeamsScraper:
         data["hikari_denwa"] = hikari_denwa.strip()
         self._log(f"  ひかり電話: {hikari_denwa}")
 
+        # ── 後確日（ET日） ──
+        koukatsu_raw = _js_get_next_td_text(detail_page, "後確日")
+        data["et_date"] = _parse_et_date(koukatsu_raw) if koukatsu_raw else ""
+        self._log(f"  後確日: {koukatsu_raw} → {data['et_date']}")
+
         detail_page.close()
         self._log("詳細ページを閉じました")
         time.sleep(0.5)
@@ -435,7 +457,12 @@ class BeamsScraper:
         data["hikari_denwa"] = hikari_denwa.strip()
         self._log(f"  【USEN】ひかり電話: {hikari_denwa}")
 
-        # ── ⑥ 法人登録（編集）ボタンを押して別タブでパートナーコードを取得 ──
+        # ── 申込日（ET日） ──
+        moushikomi_raw = _js_get_next_td_text(detail_page, "申込日")
+        data["et_date"] = _parse_et_date(moushikomi_raw) if moushikomi_raw else ""
+        self._log(f"  【USEN】申込日: {moushikomi_raw} → {data['et_date']}")
+
+        # ── ⑥ 法人登録（編集）ボタン ──
         code = ""
         try:
             # ボタンのonclick属性からURLを抽出して直接遷移（新タブ制御が複雑なため）
@@ -495,7 +522,19 @@ class BeamsScraper:
                 time.sleep(0.5)
             else:
                 self._log("⚠ 【USEN】法人登録(編集)ボタンが見つかりませんでした。通常取得にフォールバック")
-                # 編集ページが開けない場合は詳細ページ上のラベルから直接取得
+
+                # デバッグ: 詳細ページの全ラベルをダンプ
+                try:
+                    labels = detail_page.evaluate("""
+                    (() => {
+                        const tds = document.querySelectorAll('td.labelCol');
+                        return Array.from(tds).map(td => td.innerText.trim()).filter(t => t).join(' | ');
+                    })()
+                    """) or ""
+                    self._log(f"  【USEN・FB】ラベル一覧: {labels}")
+                except Exception:
+                    pass
+
                 code = _js_get_next_td_text(detail_page, "NTTパートナーコード")
                 self._log(f"  【USEN・FB】NTTパートナーコード: {code}")
                 mitsugiten_raw = _js_get_next_td_text(detail_page, "三次店")
