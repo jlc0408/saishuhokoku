@@ -114,17 +114,17 @@ class BeamsScraper:
     # ──────────────────────────────────────────
     # ⑦⑧ 日付検索
     # ──────────────────────────────────────────
-    def search_by_date(self, date_obj) -> int:
-        date_str = _date_to_str(date_obj)
-        self._log(f"検索日付: {date_str}")
+    def search_by_date(self, date_from, date_to) -> int:
+        str_from = _date_to_str(date_from)
+        str_to   = _date_to_str(date_to)
+        self._log(f"検索日付: {str_from} ～ {str_to}")
 
-        # colons含むIDのためgetElementByIdで値をセット
         self.bm.page.evaluate(
-            f"document.getElementById('{ID_DATE_FROM}').value = '{date_str}'"
+            f"document.getElementById('{ID_DATE_FROM}').value = '{str_from}'"
         )
         self.bm.safe_wait()
         self.bm.page.evaluate(
-            f"document.getElementById('{ID_DATE_TO}').value = '{date_str}'"
+            f"document.getElementById('{ID_DATE_TO}').value = '{str_to}'"
         )
         self.bm.safe_wait()
 
@@ -132,7 +132,6 @@ class BeamsScraper:
         self.bm.page.evaluate(f"document.getElementById('{ID_SEARCH_BTN}').click()")
         self.bm.wait_for_load()
 
-        # ⑨ 件数取得
         count_text = self.bm.get_text(SEL_RECORD_COUNT, "件数")
         count = 0
         m = re.search(r"\d+", count_text)
@@ -273,6 +272,26 @@ class BeamsScraper:
         data["code"] = code.strip()
         self._log(f"  NTTパートナーコード: {code}")
 
+        # ── 前確コメント ──
+        zenkatsu = ""
+        try:
+            zenkatsu = detail_page.evaluate("""
+            (() => {
+                const labels = document.querySelectorAll('td.labelCol');
+                for (const td of labels) {
+                    if (td.innerText && td.innerText.trim() === '前確コメント') {
+                        const next = td.nextElementSibling;
+                        return next ? next.innerText.trim() : '';
+                    }
+                }
+                return '';
+            })()
+            """) or ""
+        except Exception as e:
+            self._log(f"⚠ 前確コメントの取得に失敗: {e}")
+        data["zenkatsu_comment"] = zenkatsu.strip()
+        self._log(f"  前確コメント: {zenkatsu[:30]}{'...' if len(zenkatsu) > 30 else ''}")
+
         # ── プラン ──
         plan = ""
         try:
@@ -326,30 +345,26 @@ class BeamsScraper:
     ID_USEN_DATE_TO         = "j_id0:sve_form1:pageBlock1:searchPageBlockSection1:inputSearchFromTo2_to"
     USEN_TORITSUGITE_CODE   = "HCAYVT005"
 
-    def search_usen(self, date_obj) -> int:
-        """USEN案件を取扱店コード＋申込日で検索し、件数を返す。"""
-        date_str = _date_to_str(date_obj)
-        self._log(f"【USEN】取扱店コード検索: {self.USEN_TORITSUGITE_CODE} / 申込日: {date_str}")
+    def search_usen(self, date_from, date_to) -> int:
+        """USEN案件を取扱店コード＋申込日範囲で検索し、件数を返す。"""
+        str_from = _date_to_str(date_from)
+        str_to   = _date_to_str(date_to)
+        self._log(f"【USEN】取扱店コード検索: {self.USEN_TORITSUGITE_CODE} / 申込日: {str_from} ～ {str_to}")
 
-        # 「次の文字列と一致する」を選択
         self.bm.page.evaluate(
             f"document.getElementById('{self.ID_USEN_TORITSUGITE_OP}').value = 'eq'"
         )
         self.bm.safe_wait()
-
-        # 取扱店コードを入力
         self.bm.page.evaluate(
             f"document.getElementById('{self.ID_USEN_TORITSUGITE_VAL}').value = '{self.USEN_TORITSUGITE_CODE}'"
         )
         self.bm.safe_wait()
-
-        # 申込日（from・to）を入力
         self.bm.page.evaluate(
-            f"document.getElementById('{self.ID_USEN_DATE_FROM}').value = '{date_str}'"
+            f"document.getElementById('{self.ID_USEN_DATE_FROM}').value = '{str_from}'"
         )
         self.bm.safe_wait()
         self.bm.page.evaluate(
-            f"document.getElementById('{self.ID_USEN_DATE_TO}').value = '{date_str}'"
+            f"document.getElementById('{self.ID_USEN_DATE_TO}').value = '{str_to}'"
         )
         self.bm.safe_wait()
 
@@ -445,30 +460,16 @@ class BeamsScraper:
                 # ⑦ NTTパートナーコード（手入力）テキストボックスの値を取得
                 code = entry_page.evaluate("""
                 (() => {
-                    // ラベルで探す
-                    const labels = document.querySelectorAll('label');
-                    for (const lbl of labels) {
-                        if (lbl.innerText && lbl.innerText.includes('NTTパートナーコード（手入力）')) {
-                            // labelのfor属性、またはinputのidを取得
-                            const forId = lbl.getAttribute('id');
-                            if (forId) {
-                                // IDの末尾数字を148→149に変換して対応inputを探す
-                                const inputId = forId.replace(/:Component148$/, ':Component149');
-                                const input = document.getElementById(inputId);
-                                if (input) return input.value.trim();
-                            }
-                            // 同一tr内のinputを探す
-                            const tr = lbl.closest('tr');
-                            if (tr) {
-                                const inp = tr.querySelector('input[type="text"]');
-                                if (inp) return inp.value.trim();
-                            }
-                        }
-                    }
-                    // フォールバック: value属性に数字10桁のinputを探す
+                    // idの末尾がComponent149のinputを直接取得
                     const inputs = document.querySelectorAll('input[type="text"]');
                     for (const inp of inputs) {
-                        if (/^\\d{10}$/.test((inp.value || '').trim())) {
+                        if ((inp.id || '').endsWith('Component149')) {
+                            return inp.value.trim();
+                        }
+                    }
+                    // フォールバック: 10桁数値のinputを探す
+                    for (const inp of inputs) {
+                        if (/^\d{10}$/.test((inp.value || '').trim())) {
                             return inp.value.trim();
                         }
                     }
@@ -493,7 +494,13 @@ class BeamsScraper:
                 entry_page.close()
                 time.sleep(0.5)
             else:
-                self._log("⚠ 【USEN】法人登録(編集)ボタンが見つかりませんでした")
+                self._log("⚠ 【USEN】法人登録(編集)ボタンが見つかりませんでした。通常取得にフォールバック")
+                # 編集ページが開けない場合は詳細ページ上のラベルから直接取得
+                code = _js_get_next_td_text(detail_page, "NTTパートナーコード")
+                self._log(f"  【USEN・FB】NTTパートナーコード: {code}")
+                mitsugiten_raw = _js_get_next_td_text(detail_page, "三次店")
+                data["mitsugiten"] = mitsugiten_raw.strip()
+                self._log(f"  【USEN・FB】三次店(raw): {mitsugiten_raw}")
 
         except Exception as e:
             self._log(f"⚠ 【USEN】パートナーコード取得に失敗: {e}")
