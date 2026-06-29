@@ -205,14 +205,17 @@ class ExcelManager:
             }
 
     def find_first_empty_row(self) -> int:
-        """REQ列が空白の最初の行を返す（2行目以降）。"""
+        """REQ列にREQ番号（"REQ"で始まる文字列）が入っていない最初の行を返す（2行目以降）。
+        URLのみ・数値・空白などはすべてノイズ扱いで空行とみなす。
+        """
         req_col = self.col_map.get("REQ", 1)
         for row_idx in range(2, 10000):
             cell = self.ws.cell(row=row_idx, column=req_col)
             val = cell.value
-            # 値なし、またはURLではなくREQ番号でもない場合を空行とみなす
-            if val is None or str(val).strip() == "":
-                return row_idx
+            # REQ番号（"REQ"で始まる文字列）が入っている行だけをデータ行とみなす
+            if val is not None and str(val).strip().startswith("REQ"):
+                continue
+            return row_idx
         return 10000
 
     def _apply_border_and_font(self, row: int):
