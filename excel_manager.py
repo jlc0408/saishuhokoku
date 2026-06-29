@@ -62,8 +62,9 @@ _ZEN_TO_HAN = str.maketrans(
 
 # 三次店の特殊マッピング（半角変換・法人格除去・末尾コード除去の後に適用）
 _MITSUGITEN_SPECIAL: dict[str, str] = {
-    "EARTH(DHCC)":  "DHCC",
-    "レジデンシャル": "レジデンシャルインターネット",
+    "EARTH(DHCC)":        "DHCC",
+    "EARTH(ライブカメラ)": "ライブカメラ",
+    "レジデンシャル":      "レジデンシャルインターネット",
 }
 
 def _clean_mitsugiten(raw: str) -> str:
