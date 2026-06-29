@@ -394,6 +394,9 @@ class App(_BaseApp):
 
                 try:
                     detail = scraper.get_usen_detail(req_url)
+                    if detail is None:
+                        self._log(f"  ⏭ {req_no} P番号なしのためスキップ")
+                        continue
                     row = excel.find_first_empty_row()
                     et_date_str = detail.get("et_date") or self._date_to_et(date_from)
                     record = {"req": req_no, "req_url": req_url, "et_date": et_date_str, **detail}

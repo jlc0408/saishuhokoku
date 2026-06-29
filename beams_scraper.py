@@ -484,7 +484,26 @@ class BeamsScraper:
                 entry_page.wait_for_load_state("domcontentloaded")
                 time.sleep(0.5)
 
-                # ⑦ NTTパートナーコード（手入力）テキストボックスの値を取得
+                # ⑦ P番号を確認 → 空欄の場合はスキップ
+                p_number = entry_page.evaluate("""
+                (() => {
+                    const inputs = document.querySelectorAll('input[type="text"]');
+                    for (const inp of inputs) {
+                        if ((inp.id || '').endsWith('Component146')) {
+                            return inp.value.trim();
+                        }
+                    }
+                    return '';
+                })()
+                """) or ""
+                self._log(f"  【USEN】P番号: {p_number}")
+
+                if not p_number:
+                    self._log("  【USEN】P番号が空欄のためスキップします")
+                    entry_page.close()
+                    return None
+
+                # ⑧ NTTパートナーコード（手入力）テキストボックスの値を取得
                 code = entry_page.evaluate("""
                 (() => {
                     // idの末尾がComponent149のinputを直接取得
