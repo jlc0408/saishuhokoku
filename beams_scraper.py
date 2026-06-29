@@ -273,6 +273,26 @@ class BeamsScraper:
         data["code"] = code.strip()
         self._log(f"  NTTパートナーコード: {code}")
 
+        # ── 前確コメント ──
+        zenkatsu = ""
+        try:
+            zenkatsu = detail_page.evaluate("""
+            (() => {
+                const labels = document.querySelectorAll('td.labelCol');
+                for (const td of labels) {
+                    if (td.innerText && td.innerText.trim() === '前確コメント') {
+                        const next = td.nextElementSibling;
+                        return next ? next.innerText.trim() : '';
+                    }
+                }
+                return '';
+            })()
+            """) or ""
+        except Exception as e:
+            self._log(f"⚠ 前確コメントの取得に失敗: {e}")
+        data["zenkatsu_comment"] = zenkatsu.strip()
+        self._log(f"  前確コメント: {zenkatsu[:30]}{'...' if len(zenkatsu) > 30 else ''}")
+
         # ── プラン ──
         plan = ""
         try:
