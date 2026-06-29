@@ -273,26 +273,6 @@ class BeamsScraper:
         data["code"] = code.strip()
         self._log(f"  NTTパートナーコード: {code}")
 
-        # ── 前確コメント ──
-        zenkatsu = ""
-        try:
-            zenkatsu = detail_page.evaluate("""
-            (() => {
-                const labels = document.querySelectorAll('td.labelCol');
-                for (const td of labels) {
-                    if (td.innerText && td.innerText.trim() === '前確コメント') {
-                        const next = td.nextElementSibling;
-                        return next ? next.innerText.trim() : '';
-                    }
-                }
-                return '';
-            })()
-            """) or ""
-        except Exception as e:
-            self._log(f"⚠ 前確コメントの取得に失敗: {e}")
-        data["zenkatsu_comment"] = zenkatsu.strip()
-        self._log(f"  前確コメント: {zenkatsu[:30]}{'...' if len(zenkatsu) > 30 else ''}")
-
         # ── プラン ──
         plan = ""
         try:
@@ -465,16 +445,30 @@ class BeamsScraper:
                 # ⑦ NTTパートナーコード（手入力）テキストボックスの値を取得
                 code = entry_page.evaluate("""
                 (() => {
-                    // idの末尾がComponent149のinputを直接取得
-                    const inputs = document.querySelectorAll('input[type="text"]');
-                    for (const inp of inputs) {
-                        if ((inp.id || '').endsWith('Component149')) {
-                            return inp.value.trim();
+                    // ラベルで探す
+                    const labels = document.querySelectorAll('label');
+                    for (const lbl of labels) {
+                        if (lbl.innerText && lbl.innerText.includes('NTTパートナーコード（手入力）')) {
+                            // labelのfor属性、またはinputのidを取得
+                            const forId = lbl.getAttribute('id');
+                            if (forId) {
+                                // IDの末尾数字を148→149に変換して対応inputを探す
+                                const inputId = forId.replace(/:Component148$/, ':Component149');
+                                const input = document.getElementById(inputId);
+                                if (input) return input.value.trim();
+                            }
+                            // 同一tr内のinputを探す
+                            const tr = lbl.closest('tr');
+                            if (tr) {
+                                const inp = tr.querySelector('input[type="text"]');
+                                if (inp) return inp.value.trim();
+                            }
                         }
                     }
-                    // フォールバック: 10桁数値のinputを探す
+                    // フォールバック: value属性に数字10桁のinputを探す
+                    const inputs = document.querySelectorAll('input[type="text"]');
                     for (const inp of inputs) {
-                        if (/^\d{10}$/.test((inp.value || '').trim())) {
+                        if (/^\\d{10}$/.test((inp.value || '').trim())) {
                             return inp.value.trim();
                         }
                     }
