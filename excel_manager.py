@@ -393,6 +393,12 @@ class ExcelManager:
         }
 
     def save(self):
+        # フレッツ詳細シートに設定されている zeroHeight（行定義のない行を
+        # 高さ0=折りたたみ表示にする設定）を解除する。
+        # これにより、データの無い行が「折りたたまれている」ように見える
+        # 表示問題を防ぐ。対象はこのシートのみ。
+        if self.ws.sheet_format is not None:
+            self.ws.sheet_format.zeroHeight = False
         self.wb.save(self.path)
         self.wb.close()
 
