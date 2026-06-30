@@ -291,9 +291,14 @@ class ExcelManager:
     def find_first_empty_row(self) -> int:
         """REQ列にREQ番号または数値が入っていない最初の行を返す（2行目以降）。
         URLのみ・空白などはノイズ扱いで空行とみなす。
+
+        検索範囲はシートの実際の最終行 + 30行に制限する。
+        （openpyxlではセルを読みに行くだけでも未使用セルが実体化され、
+          シートの寸法が大きく広がってしまうため、10000行固定の走査はしない）
         """
         req_col = self.col_map.get("REQ", 1)
-        for row_idx in range(2, 10000):
+        limit = self.ws.max_row + 30
+        for row_idx in range(2, limit + 1):
             cell = self.ws.cell(row=row_idx, column=req_col)
             val = cell.value
             if val is None or str(val).strip() == "":
@@ -304,7 +309,7 @@ class ExcelManager:
                 continue
             # それ以外（URLなど）はノイズ → 空行扱い
             return row_idx
-        return 10000
+        return limit
 
     def _apply_border_and_font(self, row: int):
         """
